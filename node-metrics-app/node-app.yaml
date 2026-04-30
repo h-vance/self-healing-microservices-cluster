@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: node-metrics-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: node-metrics-app
+  template:
+    metadata:
+      labels:
+        app: node-metrics-app
+    spec:
+      containers:
+      - name: node-metrics-app
+        image: w0nky/my-node-metrics:latest
+        ports:
+        - containerPort: 3000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-metrics-service
+  labels:
+    app: node-metrics-app
+spec:
+  selector:
+    app: node-metrics-app
+  ports:
+  - port: 3000
+    targetPort: 3000
+    name: http-metrics

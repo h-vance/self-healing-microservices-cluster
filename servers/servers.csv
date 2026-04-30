@@ -1,0 +1,4 @@
+server_name,instance_type,hourly_cost
+web-prod-01,t3.micro,0.02
+db-prod-01,t3.large,0.08
+cache-prod-01,t3.micro,0.02

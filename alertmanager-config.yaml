@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: email-config
+  labels:
+    release: prometheus
+spec:
+  route:
+    receiver: "email-receiver"
+  receivers:
+    - name: "email-receiver"
+      emailConfigs:
+        - to: "hvance788@gmail.com"
+          from: "hvance788@gmail.com"
+          smarthost: "smtp.gmail.com:587"
+          authUsername: "hvance788@gmail.com"
+          authPassword:
+            name: smtp-secret
+            key: password

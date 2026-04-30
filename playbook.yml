@@ -1,0 +1,6 @@
+---
+- name: Configure Fleet
+  hosts: my_servers
+  become: yes
+  roles:
+    - ssh

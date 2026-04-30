@@ -1,0 +1,24 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: redis-alerts
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: redis-alerts
+      rules:
+        - alert: RedisDown
+          expr: redis_up == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Redis instance is down"
+        - alert: RedisTooManyConnections
+          expr: redis_connected_clients > 100
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Redis instance has too many active connections"

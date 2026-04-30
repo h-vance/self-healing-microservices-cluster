@@ -1,0 +1,4 @@
+mongoExpress:
+  replicaCount: 1
+  image: mongo-express
+  port: 8081

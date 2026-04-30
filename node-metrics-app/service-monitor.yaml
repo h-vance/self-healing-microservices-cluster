@@ -1,0 +1,12 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: node-metrics-monitor
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: node-metrics-app
+  endpoints:
+    - port: http-metrics

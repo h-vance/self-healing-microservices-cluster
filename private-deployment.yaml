@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: private-app-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: private-app
+  template:
+    metadata:
+      labels:
+        app: private-app
+    spec:
+      imagePullSecrets:
+        - name: my-registry-key
+      containers:
+        - name: private-app-container
+          image: w0nky/my-private-nginx:latest
