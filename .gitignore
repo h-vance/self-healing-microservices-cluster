@@ -4,3 +4,4 @@ venv/
 *.tfstate
 *.tfstate.backup
 .terraform/
+.ruff_cache/
