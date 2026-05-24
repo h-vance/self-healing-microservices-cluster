@@ -57,13 +57,13 @@
 
 | Script | Purpose | Trigger |
 | ------- | --------- | --------- |
-| `monitor.py` | Health-check a target URL, reboot EC2 on failure, send email | Manual / cron |
-| `health_check.py` | Scheduled EC2 instance state polling every 10 seconds | Continuous |
-| `backup.py` | Create EBS snapshots for all attached volumes | Cron |
-| `restore.py` | Restore a volume from a specific snapshot and attach to instance | Manual |
-| `cleanup.py` | Delete old snapshots tagged as "Automated Backup" | Cron |
-| `zero_leak.py` | Find snapshots older than 30 days (dry-run by default) | Manual review |
-| `add_tags.py` | Tag all EC2 instances with `Environment: Dev` | One-time setup |
+| `scripts/monitor.py` | Health-check a target URL, reboot EC2 on failure, send email | Manual / cron |
+| `scripts/health_check.py` | Scheduled EC2 instance state polling every 10 seconds | Continuous |
+| `scripts/backup.py` | Create EBS snapshots for all attached volumes | Cron |
+| `scripts/restore.py` | Restore a volume from a specific snapshot and attach to instance | Manual |
+| `scripts/cleanup.py` | Delete old snapshots tagged as "Automated Backup" | Cron |
+| `scripts/zero_leak.py` | Find snapshots older than 30 days (dry-run by default) | Manual review |
+| `scripts/add_tags.py` | Tag all EC2 instances with `Environment: Dev` | One-time setup |
 
 ### monitor.py — Self-Healing Core
 
@@ -74,7 +74,7 @@ The primary recovery script. Performs an HTTP GET against the target URL and:
 - If **unreachable** (timeout / connection error) — sends an alert and reboots the instance.
 
 ```bash
-python monitor.py
+python scripts/monitor.py
 ```
 
 ### backup.py — EBS Snapshot Automation
@@ -82,7 +82,7 @@ python monitor.py
 Creates snapshots of every EBS volume in the `us-east-1` region with description "Automated Backup". Intended to run daily via cron.
 
 ```bash
-python backup.py
+python scripts/backup.py
 ```
 
 ### restore.py — Volume Recovery
@@ -90,7 +90,7 @@ python backup.py
 Restores a volume from a specific snapshot ID and attaches it to a target instance as `/dev/sdf`. Update `snapshot_id` and `instance_id` inside the script before running.
 
 ```bash
-python restore.py
+python scripts/restore.py
 ```
 
 ### cleanup.py — Snapshot Lifecycle
@@ -98,7 +98,7 @@ python restore.py
 Deletes all snapshots with the "Automated Backup" description — designed to run after a successful restore to prevent accumulation.
 
 ```bash
-python cleanup.py
+python scripts/cleanup.py
 ```
 
 ### zero_leak.py — Stale Snapshot Audit
@@ -106,7 +106,7 @@ python cleanup.py
 Identifies snapshots older than 30 days (cross-account, dry-run). Uncomment the delete line to enable automatic removal.
 
 ```bash
-python zero_leak.py
+python scripts/zero_leak.py
 ```
 
 ### health_check.py — Continuous State Monitoring
@@ -114,7 +114,7 @@ python zero_leak.py
 Polls EC2 `DescribeInstances` every 10 seconds and prints instance state. Useful for monitoring recovery progress after a reboot.
 
 ```bash
-python health_check.py
+python scripts/health_check.py
 ```
 
 ### add_tags.py — Resource Labeling
@@ -122,7 +122,7 @@ python health_check.py
 Tags all EC2 instances in `us-east-1` with `Environment: Dev`. Run once during initial provisioning.
 
 ```bash
-python add_tags.py
+python scripts/add_tags.py
 ```
 
 ---
@@ -134,10 +134,10 @@ python add_tags.py
 | Component | Configuration | Purpose |
 | ----------- | --------------- | --------- |
 | Prometheus | `prometheus.yml` | Scrapes `/metrics` from node-metrics-app |
-| Alertmanager | `alertmanager-config.yaml` | Routes alerts to notification channels |
-| Custom Rules | `custom-alerts.yaml` | Predefined alerts (HighCPUUsage, PodFailedToStart) |
-| Redis Alerts | `redis-alerts.yaml` | Redis-specific monitoring rules |
-| ServiceMonitor | `redis-servicemonitor.yaml` | Prometheus Operator scrape configuration |
+| Alertmanager | `k8s/alertmanager-config.yaml` | Routes alerts to notification channels |
+| Custom Rules | `k8s/custom-alerts.yaml` | Predefined alerts (HighCPUUsage, PodFailedToStart) |
+| Redis Alerts | `k8s/redis-alerts.yaml` | Redis-specific monitoring rules |
+| ServiceMonitor | `k8s/redis-servicemonitor.yaml` | Prometheus Operator scrape configuration |
 
 The custom alert rules detect:
 - **HighCPUUsage** — instance CPU above 50% for 5 minutes (warning)
@@ -161,36 +161,37 @@ The cluster includes Kubernetes manifests for stateful workloads:
 
 | Manifest | Resource | Description |
 | ---------- | ---------- | ------------- |
-| `mongo-config.yaml` | ConfigMap | MongoDB configuration |
-| `mongo-secret.yaml` | Secret | MongoDB authentication credentials |
-| `mongo-service.yaml` | Service | MongoDB internal service exposure |
-| `mongo-express.yaml` | Deployment | Web-based MongoDB admin interface |
-| `mongo-express-service.yaml` | Service | mongo-express external access |
-| `redis-alerts.yaml` | PrometheusRule | Redis-specific alert definitions |
-| `redis-servicemonitor.yaml` | ServiceMonitor | Prometheus scrape target for Redis |
-| `pod-viewer-role.yaml` | ClusterRole | Read-only pod access |
-| `pod-viewer-binding.yaml` | RoleBinding | Bind viewer role to service account |
-| `private-deployment.yaml` | Deployment | Sample private deployment |
+| `k8s/mongo-config.yaml` | ConfigMap | MongoDB configuration |
+| `k8s/mongo-secret.yaml` | Secret | MongoDB authentication credentials |
+| `k8s/mongo-service.yaml` | Service | MongoDB internal service exposure |
+| `k8s/mongo-express.yaml` | Deployment | Web-based MongoDB admin interface |
+| `k8s/mongo-express-service.yaml` | Service | mongo-express external access |
+| `k8s/redis-alerts.yaml` | PrometheusRule | Redis-specific alert definitions |
+| `k8s/redis-servicemonitor.yaml` | ServiceMonitor | Prometheus scrape target for Redis |
+| `k8s/pod-viewer-role.yaml` | ClusterRole | Read-only pod access |
+| `k8s/pod-viewer-binding.yaml` | RoleBinding | Bind viewer role to service account |
+| `k8s/private-deployment.yaml` | Deployment | Sample private deployment |
 
 ---
 
 ## Infrastructure Provisioning
 
-### Terraform (`main.tf`)
+### Terraform (`terraform/main.tf`)
 
 Defines the core AWS infrastructure: EC2 instances, networking, and security groups.
 
 ```bash
+cd terraform
 terraform init
 terraform apply
 ```
 
-### Ansible (`playbook.yml`)
+### Ansible (`ansible/playbook.yml`)
 
 Configures provisioned servers. Applies the `ssh` role for secure SSH configuration.
 
 ```bash
-ansible-playbook -i inventory.ini playbook.yml
+ansible-playbook -i ansible/inventory.ini ansible/playbook.yml
 ```
 
 ---
