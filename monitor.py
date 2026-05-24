@@ -32,7 +32,7 @@ try:
             f"Subject: ALERT: Website Down\n\nWebsite returned status code: {response.status_code}"
         )
         recover_server()
-except Exception as e:
+except Exception:
     print("Could not reach the website. Sending email and recovering...")
     send_notification(
         "Subject: ALERT: Website Down\n\nThe website is completely unreachable!"
