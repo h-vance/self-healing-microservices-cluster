@@ -1,90 +1,94 @@
 # Self-Healing Microservices Cluster
 
-Demo infrastructure for a monitored Kubernetes workload, Prometheus scraping, AWS recovery scripts, Terraform validation, and Ansible hardening examples.
+[![CI](https://github.com/h-vance/self-healing-microservices-cluster/actions/workflows/terraform.yml/badge.svg)](https://github.com/h-vance/self-healing-microservices-cluster/actions/workflows/terraform.yml)
+[![Python](https://www.shieldcn.dev/badge/Python-3776AB.svg?variant=default&logo=Python&logoColor=FFFFFF&size=xs)](https://www.python.org/)
+[![Node.js](https://www.shieldcn.dev/badge/Node.js-339933.svg?variant=default&logo=Node.js&logoColor=FFFFFF&size=xs)](https://nodejs.org/)
+[![Prometheus](https://www.shieldcn.dev/badge/Prometheus-E6522C.svg?variant=default&logo=Prometheus&logoColor=FFFFFF&size=xs)](https://prometheus.io/)
+[![Redis](https://www.shieldcn.dev/badge/Redis-DC382D.svg?variant=default&logo=Redis&logoColor=FFFFFF&size=xs)](https://redis.io/)
+[![Terraform](https://www.shieldcn.dev/badge/Terraform-7B42BC.svg?variant=default&logo=Terraform&logoColor=FFFFFF&size=xs)](https://www.terraform.io/)
+[![Ansible](https://www.shieldcn.dev/badge/Ansible-EE0000.svg?variant=default&logo=Ansible&logoColor=FFFFFF&size=xs)](https://www.ansible.com/)
+[![AWS](https://www.shieldcn.dev/badge/AWS-232F3E.svg?variant=default&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZD0iTTExLjk2IDExLjIzYy0xLjMyLS40MS0xLjc0LS44My0xLjc0LTEuNCAwLS42Ny42NS0xLjIyIDEuNjktMS4yMiAxLjA0IDAgMS44My42IDIuMDggMS40OGgxLjhjLS4yOC0xLjU1LTEuNjgtMi44OC0zLjgzLTIuODgtMi4yMiAwLTMuNiAxLjM0LTMuNiAyLjkyIDAgMS45MyAxLjU4IDIuNSAzLjMzIDMuMDMgMS40OC40NSAxLjc3Ljk1IDEuNzcgMS41OCAwIC44Ni0uODggMS40LTEuOTIgMS40LTEuMjkgMC0yLjI2LS43OC0yLjQzLTEuOEg3LjNjLjE4IDEuOTUgMS44NSAzLjE2IDQuMTQgMy4xNiAyLjQ1IDAgMy44Ni0xLjMgMy44Ni0zLjAzIDAtMS44OS0xLjM1LTIuNi0zLjM0LTMuMjR6bS04LjgxIDEuOWgyLjM4bC42OC0xLjkyaDIuOTVsLjY2IDEuOTJoMi40TDkuMDQgNi4wM0g2Ljg3bC0zLjcyIDcuMXptMy42Mi0zLjQ4bDEtMi45IDEuMDMgMi45SDYuNzd6TTI0IDYuMDNoLTIuMzFsLTEuOSA1LjU2LTEuNjgtNC45aC0uMThsLTEuNjYgNC45LTEuODktNS41NmgtMi4zbDMuMDUgNy4xaDIuMDhsMS40NS00LjQzIDEuNDcgNC40M2gyLjFMMjQgNi4wM3oiLz48L3N2Zz4K&logoColor=FFFFFF&size=xs)](https://aws.amazon.com/)
+[![Docker](https://www.shieldcn.dev/badge/Docker-2496ED.svg?variant=default&logo=Docker&logoColor=FFFFFF&size=xs)](https://www.docker.com/)
 
-This repository is portfolio-oriented. It shows the shape of a cloud/SRE project while keeping cloud-mutating automation dry-run by default.
+Demo infrastructure for a monitored Kubernetes workload with Prometheus metrics, Helm rendering, Terraform validation, Ansible hardening, and dry-run AWS recovery utilities.
 
-## What Is Included
+This repo is built for portfolio review: it shows production-aware patterns without pretending to be a complete production platform.
 
-- `node-metrics-app/`: Express service with `/`, `/healthz`, and `/metrics` endpoints.
-- `node-metrics-app/node-app.yaml`: Kubernetes deployment and service for the metrics app.
-- `k8s/` and `mongo-k8s/`: standalone Kubernetes manifests for MongoDB, mongo-express, RBAC, alerts, and demo workloads.
-- `mongo-stack/`: Helm chart for rendering the MongoDB and mongo-express stack.
-- `terraform/`: small AWS EC2 example with pinned provider constraints and validation-friendly variables.
-- `scripts/`: AWS recovery, backup, restore, tagging, and cleanup utilities.
-- `ansible/`: SSH hardening role and small fleet utility examples.
+## What This Demonstrates
 
-## Safety Notes
+- A testable Node.js metrics service with `/healthz`, `/`, and `/metrics`.
+- Kubernetes manifests with probes, resource controls, and basic security contexts.
+- A Helm chart for rendering the MongoDB and mongo-express demo stack.
+- Terraform that validates a small AWS EC2 example without requiring backend state.
+- Python AWS utilities that default to dry-run behavior before cloud mutation.
+- CI that checks Node tests, Helm, Terraform, and formatting.
 
-- The checked-in Kubernetes Secret values are fake demo placeholders. Replace them before applying manifests to a real cluster.
-- AWS scripts default to read-only or dry-run behavior. Pass `--execute` only when you intend to mutate cloud resources.
-- The MongoDB examples are demo deployments. They do not include persistent volumes, network policies, external secret management, or high availability.
-- Rotate any credentials that were ever committed before this hardening pass. In particular, treat previous SMTP app passwords as compromised.
+## Architecture
 
-## Local Validation
-
-Run the checks from the repository root:
-
-```bash
-cd node-metrics-app
-npm ci
-npm test
-node -c index.js
-cd ..
-
-helm lint mongo-stack
-helm template mongo-stack mongo-stack
-
-terraform fmt -check -recursive
-cd terraform
-terraform init -backend=false
-terraform validate
+```mermaid
+flowchart LR
+    User[User or probe] --> App[Node metrics app]
+    App --> Health[/healthz/]
+    App --> Metrics[/metrics/]
+    Metrics --> ServiceMonitor[Prometheus ServiceMonitor]
+    Helm[Helm chart] --> Mongo[MongoDB demo stack]
+    Scripts[AWS utility scripts] --> DryRun[Dry-run recovery and cleanup]
+    Terraform[Terraform] --> EC2[Demo EC2 instance]
+    Ansible[Ansible] --> SSH[SSH hardening role]
 ```
 
-The GitHub Actions workflow runs the same core checks on push and pull request to `main`.
+For deeper system notes, see [docs/architecture.md](docs/architecture.md).
 
-## Run The Metrics App
+## Quickstart
 
-```bash
-cd node-metrics-app
-npm ci
-PORT=3000 npm start
-```
+Run from the repository root unless a command changes directories.
 
-Endpoints:
+| Task | Command |
+| --- | --- |
+| Install Node deps | `cd node-metrics-app && npm ci` |
+| Test metrics app | `cd node-metrics-app && npm test` |
+| Run metrics app | `cd node-metrics-app && PORT=3000 npm start` |
+| Build container | `cd node-metrics-app && docker build -t node-metrics-app:local .` |
+| Lint Helm chart | `helm lint mongo-stack` |
+| Render Helm chart | `helm template mongo-stack mongo-stack` |
+| Check Terraform formatting | `terraform fmt -check -recursive` |
+| Validate Terraform | `cd terraform && terraform init -backend=false && terraform validate` |
 
-- `GET /healthz`: returns a simple health response.
-- `GET /`: increments `my_custom_metric_total`.
-- `GET /metrics`: exposes Prometheus metrics.
+## Prerequisites
 
-Build the container locally:
+| Tool | Used for |
+| --- | --- |
+| Node.js 22 and npm | Metrics app tests and local server |
+| Docker | Local image build |
+| Helm | Chart linting and rendering |
+| kubectl | Applying manifests to a cluster |
+| Terraform >= 1.5 | AWS example validation |
+| Python 3 | AWS and Ansible helper scripts |
+| AWS credentials | Only required for live AWS API calls |
+| Ansible | SSH hardening playbook |
 
-```bash
-cd node-metrics-app
-docker build -t node-metrics-app:local .
-```
+## Repository Map
 
-## Kubernetes And Helm
+| Path | Purpose |
+| --- | --- |
+| `node-metrics-app/` | Express metrics service, Dockerfile, Kubernetes service, and tests |
+| `k8s/` | Standalone Kubernetes examples for alerts, RBAC, MongoDB, and demo workloads |
+| `mongo-k8s/` | Alternate standalone MongoDB and mongo-express manifests |
+| `mongo-stack/` | Helm chart for the MongoDB demo stack |
+| `terraform/` | Validation-friendly AWS EC2 example |
+| `scripts/` | AWS backup, cleanup, restore, tagging, health, and recovery utilities |
+| `ansible/` | SSH hardening role and fleet utility examples |
+| `assets/` | Existing project SVG assets |
+| `aws-bedrock-agent/` | Placeholder directory for future agent work |
+| `terraform-landing-zone/` | Placeholder directory for future landing-zone work |
 
-Standalone metrics app deployment:
+`node-metrics-app/service-monitor.yaml` is the canonical ServiceMonitor example. `service-monitor.yml` is a duplicate legacy filename kept for compatibility.
 
-```bash
-kubectl apply -f node-metrics-app/node-app.yaml
-kubectl apply -f node-metrics-app/service-monitor.yaml
-```
+## Configuration
 
-Helm render and install:
+Copy `.env.example` when running local scripts that read environment variables. Full details live in [docs/configuration.md](docs/configuration.md).
 
-```bash
-helm template mongo-stack mongo-stack
-helm install mongo-stack mongo-stack
-```
-
-The manifests use pinned example image tags, probes, resource requests and limits, and basic security contexts. For production, add persistent storage, network policies, external secret delivery, backup verification, and multi-replica service design.
-
-## AWS Utility Scripts
-
-Examples:
+AWS utility scripts are safe by default. Commands that can mutate cloud resources require `--execute`.
 
 ```bash
 python3 scripts/monitor.py --url https://example.com
@@ -94,52 +98,23 @@ python3 scripts/restore.py --snapshot-id snap-123 --instance-id i-123 --availabi
 python3 scripts/add_tags.py --key Environment --value Dev
 ```
 
-Add `--execute` to scripts that support mutation after reviewing the dry-run output.
+## Documentation
 
-`scripts/monitor.py` reads optional notification and recovery settings from environment variables:
+- [Architecture](docs/architecture.md)
+- [Runbooks](docs/runbooks.md)
+- [Configuration](docs/configuration.md)
+- [Portfolio Scope](docs/portfolio-scope.md)
 
-- `MONITOR_URL`
-- `RECOVERY_INSTANCE_ID`
-- `AWS_REGION`
-- `SMTP_SENDER`
-- `SMTP_RECEIVER`
-- `SMTP_PASSWORD`
+## Safety Notes
 
-## Terraform
-
-The Terraform example provisions one demo EC2 instance.
-
-```bash
-cd terraform
-terraform init -backend=false
-terraform validate
-terraform plan
-```
-
-Set a different AMI, region, or instance type with variables:
-
-```bash
-terraform plan \
-  -var='aws_region=us-east-1' \
-  -var='ami_id=ami-0c7217cdde317cfec' \
-  -var='instance_type=t3.micro'
-```
-
-## Ansible
-
-The SSH role disables root SSH login and restarts SSH when the config changes.
-
-```bash
-cd ansible
-ansible-playbook -i inventory.ini playbook.yml
-```
-
-The sample inventory has no active hosts by default.
+- The checked-in Kubernetes Secret values are placeholders. Replace them before applying manifests to a real cluster.
+- Do not place real credentials in manifests, `.env` files, command history, or documentation.
+- MongoDB examples are demo deployments. They do not include persistent volumes, network policies, external secret delivery, or high availability.
+- Terraform is intentionally minimal and does not create a VPC, EKS cluster, IAM boundary, or observability stack.
 
 ## Known Limitations
 
-- No end-to-end live cluster test is included.
+- No live cluster end-to-end test is included.
 - No production secret manager is wired in.
-- MongoDB has no persistence in the demo manifests.
-- Terraform is intentionally minimal and does not create a full VPC, EKS cluster, IAM boundary, or observability stack.
+- MongoDB has no persistent storage in the demo manifests.
 - Docker image tags such as `w0nky/my-node-metrics:1.0.0` assume the image has been built and published under that tag.
