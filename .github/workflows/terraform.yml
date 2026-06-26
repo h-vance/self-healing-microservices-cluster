@@ -1,12 +1,13 @@
 name: Validate Infrastructure
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
-      - main
+      - master
   push:
     branches:
-      - main
+      - master
 
 permissions:
   contents: read
