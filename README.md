@@ -1,6 +1,6 @@
 # Self-Healing Microservices Cluster
 
-[![CI](https://github.com/h-vance/self-healing-microservices-cluster/actions/workflows/terraform.yml/badge.svg)](https://github.com/h-vance/self-healing-microservices-cluster/actions/workflows/terraform.yml)
+[![CI](https://github.com/h-vance/self-healing-microservices-cluster/actions/workflows/ci.yml/badge.svg)](https://github.com/h-vance/self-healing-microservices-cluster/actions/workflows/ci.yml)
 [![Python](https://www.shieldcn.dev/badge/Python-3776AB.svg?variant=default&logo=Python&logoColor=FFFFFF&size=xs)](https://www.python.org/)
 [![Node.js](https://www.shieldcn.dev/badge/Node.js-339933.svg?variant=default&logo=Node.js&logoColor=FFFFFF&size=xs)](https://nodejs.org/)
 [![Prometheus](https://www.shieldcn.dev/badge/Prometheus-E6522C.svg?variant=default&logo=Prometheus&logoColor=FFFFFF&size=xs)](https://prometheus.io/)
