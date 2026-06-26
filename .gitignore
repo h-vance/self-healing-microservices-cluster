@@ -1,6 +1,8 @@
 node_modules/
 venv/
 .DS_Store
+.env
+.env.local
 *.tfstate
 *.tfstate.backup
 .terraform/
