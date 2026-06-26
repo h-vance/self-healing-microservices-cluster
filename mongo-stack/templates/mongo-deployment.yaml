@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: mongodb-deployment
 spec:
-  replicas: 1
+  replicas: {{ .Values.mongodb.replicaCount }}
   selector:
     matchLabels:
       app: mongodb
@@ -12,11 +12,16 @@ spec:
       labels:
         app: mongodb
     spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: mongodb
-          image: mongo
+          image: {{ .Values.mongodb.image | quote }}
+          imagePullPolicy: IfNotPresent
           ports:
-            - containerPort: 27017
+            - containerPort: {{ .Values.mongodb.port }}
+              name: mongodb
           env:
             - name: MONGO_INITDB_ROOT_USERNAME
               valueFrom:
@@ -28,3 +33,20 @@ spec:
                 secretKeyRef:
                   name: mongodb-secret
                   key: mongo-root-password
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --eval
+                - db.adminCommand('ping')
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: mongodb
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+{{ toYaml .Values.mongodb.resources | indent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false

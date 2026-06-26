@@ -1,22 +1,55 @@
-name: Terraform Pipeline
+name: Validate Infrastructure
 
 on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
 
 jobs:
-  terraform-plan:
+  validate:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: node-metrics-app/package-lock.json
+
+      - name: Test Node metrics app
+        working-directory: node-metrics-app
+        run: |
+          npm ci
+          npm test
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint Helm chart
+        run: helm lint mongo-stack
+
+      - name: Render Helm chart
+        run: helm template mongo-stack mongo-stack
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init
-        run: terraform init
+      - name: Terraform format check
+        run: terraform fmt -check -recursive
 
-      - name: Terraform Plan
-        run: terraform plan
+      - name: Terraform init
+        working-directory: terraform
+        run: terraform init -backend=false
+
+      - name: Terraform validate
+        working-directory: terraform
+        run: terraform validate

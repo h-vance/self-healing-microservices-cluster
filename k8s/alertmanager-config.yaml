@@ -6,14 +6,14 @@ metadata:
     release: prometheus
 spec:
   route:
-    receiver: "email-receiver"
+    receiver: email-receiver
   receivers:
-    - name: "email-receiver"
+    - name: email-receiver
       emailConfigs:
-        - to: "hvance788@gmail.com"
-          from: "hvance788@gmail.com"
-          smarthost: "smtp.gmail.com:587"
-          authUsername: "hvance788@gmail.com"
+        - to: ops@example.com
+          from: alerts@example.com
+          smarthost: smtp.example.com:587
+          authUsername: alerts@example.com
           authPassword:
             name: smtp-secret
             key: password

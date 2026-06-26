@@ -1,20 +1,56 @@
+import argparse
+import os
+
 import boto3
-import time
 
-ec2 = boto3.client("ec2", region_name="us-east-1")
 
-snapshot_id = "snap-06ba93e636ba16626"
-instance_id = "i-01e50e9ba7b378cb8"
-az = "us-east-1d"  # Make sure this matches your instance's Availability Zone
+def parse_args():
+    parser = argparse.ArgumentParser(description="Restore and attach an EBS volume from a snapshot.")
+    parser.add_argument("--snapshot-id", required=True)
+    parser.add_argument("--instance-id", required=True)
+    parser.add_argument("--availability-zone", required=True)
+    parser.add_argument("--region", default=os.getenv("AWS_REGION", "us-east-1"))
+    parser.add_argument("--device", default="/dev/sdf")
+    parser.add_argument("--execute", action="store_true", help="Create and attach the volume.")
+    return parser.parse_args()
 
-print(f"Restoring volume from {snapshot_id}...")
-volume = ec2.create_volume(SnapshotId=snapshot_id, AvailabilityZone=az)
-vol_id = volume["VolumeId"]
 
-# Wait for AWS to provision the volume
-print("Waiting for volume to become available...")
-time.sleep(15)
+def main():
+    args = parse_args()
 
-print(f"Attaching {vol_id} to {instance_id}...")
-ec2.attach_volume(VolumeId=vol_id, InstanceId=instance_id, Device="/dev/sdf")
-print("Restore and attachment complete!")
+    if not args.execute:
+        print(
+            "Dry run: would create a volume from "
+            f"{args.snapshot_id} in {args.availability_zone} and attach it to "
+            f"{args.instance_id} as {args.device}."
+        )
+        return
+
+    ec2 = boto3.client("ec2", region_name=args.region)
+    print(f"Restoring volume from {args.snapshot_id}...")
+    volume = ec2.create_volume(
+        SnapshotId=args.snapshot_id,
+        AvailabilityZone=args.availability_zone,
+        TagSpecifications=[
+            {
+                "ResourceType": "volume",
+                "Tags": [{"Key": "RestoredBy", "Value": "restore.py"}],
+            }
+        ],
+    )
+    volume_id = volume["VolumeId"]
+
+    print(f"Waiting for {volume_id} to become available...")
+    ec2.get_waiter("volume_available").wait(VolumeIds=[volume_id])
+
+    print(f"Attaching {volume_id} to {args.instance_id}...")
+    ec2.attach_volume(
+        VolumeId=volume_id,
+        InstanceId=args.instance_id,
+        Device=args.device,
+    )
+    print("Restore and attachment complete.")
+
+
+if __name__ == "__main__":
+    main()
