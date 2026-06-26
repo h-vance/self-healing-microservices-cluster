@@ -1,257 +1,145 @@
-# Self-Healing Microservices Cluster with Prometheus Monitoring
+# Self-Healing Microservices Cluster
 
-> **Automated infrastructure recovery and observability for containerized microservices on AWS.**
+Demo infrastructure for a monitored Kubernetes workload, Prometheus scraping, AWS recovery scripts, Terraform validation, and Ansible hardening examples.
 
-[![Python](https://www.shieldcn.dev/badge/Python-3776AB.svg?variant=default&logo=Python&logoColor=FFFFFF&size=xs)](https://www.python.org/)
-[![Node.js](https://www.shieldcn.dev/badge/Node.js-339933.svg?variant=default&logo=Node.js&logoColor=FFFFFF&size=xs)](https://nodejs.org/)
-[![Prometheus](https://www.shieldcn.dev/badge/Prometheus-E6522C.svg?variant=default&logo=Prometheus&logoColor=FFFFFF&size=xs)](https://prometheus.io/)
-[![Redis](https://www.shieldcn.dev/badge/Redis-DC382D.svg?variant=default&logo=Redis&logoColor=FFFFFF&size=xs)](https://redis.io/)
-[![Terraform](https://www.shieldcn.dev/badge/Terraform-7B42BC.svg?variant=default&logo=Terraform&logoColor=FFFFFF&size=xs)](https://www.terraform.io/)
-[![Ansible](https://www.shieldcn.dev/badge/Ansible-EE0000.svg?variant=default&logo=Ansible&logoColor=FFFFFF&size=xs)](https://www.ansible.com/)
-[![AWS](https://www.shieldcn.dev/badge/AWS-232F3E.svg?variant=default&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZD0iTTExLjk2IDExLjIzYy0xLjMyLS40MS0xLjc0LS44My0xLjc0LTEuNCAwLS42Ny42NS0xLjIyIDEuNjktMS4yMiAxLjA0IDAgMS44My42IDIuMDggMS40OGgxLjhjLS4yOC0xLjU1LTEuNjgtMi44OC0zLjgzLTIuODgtMi4yMiAwLTMuNiAxLjM0LTMuNiAyLjkyIDAgMS45MyAxLjU4IDIuNSAzLjMzIDMuMDMgMS40OC40NSAxLjc3Ljk1IDEuNzcgMS41OCAwIC44Ni0uODggMS40LTEuOTIgMS40LTEuMjkgMC0yLjI2LS43OC0yLjQzLTEuOEg3LjNjLjE4IDEuOTUgMS44NSAzLjE2IDQuMTQgMy4xNiAyLjQ1IDAgMy44Ni0xLjMgMy44Ni0zLjAzIDAtMS44OS0xLjM1LTIuNi0zLjM0LTMuMjR6bS04LjgxIDEuOWgyLjM4bC42OC0xLjkyaDIuOTVsLjY2IDEuOTJoMi40TDkuMDQgNi4wM0g2Ljg3bC0zLjcyIDcuMXptMy42Mi0zLjQ4bDEtMi45IDEuMDMgMi45SDYuNzd6TTI0IDYuMDNoLTIuMzFsLTEuOSA1LjU2LTEuNjgtNC45aC0uMThsLTEuNjYgNC45LTEuODktNS41NmgtMi4zbDMuMDUgNy4xaDIuMDhsMS40NS00LjQzIDEuNDcgNC40M2gyLjFMMjQgNi4wM3oiLz48L3N2Zz4K&logoColor=FFFFFF&size=xs)](https://aws.amazon.com/)
-[![Docker](https://www.shieldcn.dev/badge/Docker-2496ED.svg?variant=default&logo=Docker&logoColor=FFFFFF&size=xs)](https://www.docker.com/)
+This repository is portfolio-oriented. It shows the shape of a cloud/SRE project while keeping cloud-mutating automation dry-run by default.
 
----
+## What Is Included
 
-## The Problem
+- `node-metrics-app/`: Express service with `/`, `/healthz`, and `/metrics` endpoints.
+- `node-metrics-app/node-app.yaml`: Kubernetes deployment and service for the metrics app.
+- `k8s/` and `mongo-k8s/`: standalone Kubernetes manifests for MongoDB, mongo-express, RBAC, alerts, and demo workloads.
+- `mongo-stack/`: Helm chart for rendering the MongoDB and mongo-express stack.
+- `terraform/`: small AWS EC2 example with pinned provider constraints and validation-friendly variables.
+- `scripts/`: AWS recovery, backup, restore, tagging, and cleanup utilities.
+- `ansible/`: SSH hardening role and small fleet utility examples.
 
-**The Symptom:** Microservices went down during off-hours and nobody noticed until customers reported it. Recovery required manual SSH access, log inspection, and instance reboots — each incident taking 30+ minutes of reactive firefighting.
+## Safety Notes
 
-**The Investigation:** The stack had monitoring but no automated response. Prometheus collected metrics and Alertmanager fired alerts, but there was no mechanism to act on those alerts without human intervention. Backup and restore procedures were documented but rarely tested.
+- The checked-in Kubernetes Secret values are fake demo placeholders. Replace them before applying manifests to a real cluster.
+- AWS scripts default to read-only or dry-run behavior. Pass `--execute` only when you intend to mutate cloud resources.
+- The MongoDB examples are demo deployments. They do not include persistent volumes, network policies, external secret management, or high availability.
+- Rotate any credentials that were ever committed before this hardening pass. In particular, treat previous SMTP app passwords as compromised.
 
-**The Resolution:** A self-healing cluster that combines Prometheus-based observability with Python-driven recovery automation. When a service fails health checks, the system automatically reboots the affected instance, sends email notification, and logs the event. Backup, restore, and cleanup scripts run on a schedule to ensure data durability.
+## Local Validation
 
----
-
-## Architecture
-
-```text
-                         ┌─────────────────────┐
-                         │   Prometheus         │
-                         │   (Metrics & Alerts) │
-                         └──────┬──────┬────────┘
-                                │      │
-                    ┌───────────┘      └───────────┐
-                    ▼                              ▼
-         ┌──────────────────┐          ┌───────────────────┐
-         │   Node Metrics   │          │  Alertmanager      │
-         │   (Express App)  │          │  (Alert Routing)   │
-         └──────────────────┘          └───────────────────┘
-                                                    │
-                                                    ▼
-         ┌──────────────────┐          ┌───────────────────┐
-         │   monitor.py     │─────────▶│  EC2 Reboot +     │
-         │   (Health Check) │          │  Email Notify     │
-         └──────────────────┘          └───────────────────┘
-                                                    │
-         ┌──────────────────┐                       │
-         │   backup.py      │───────────────────────┤
-         │   restore.py     │───────────────────────┤
-         │   cleanup.py     │───────────────────────┘
-         └──────────────────┘
-```
-
----
-
-## Script Reference
-
-| Script | Purpose | Trigger |
-| ------- | --------- | --------- |
-| `scripts/monitor.py` | Health-check a target URL, reboot EC2 on failure, send email | Manual / cron |
-| `scripts/health_check.py` | Scheduled EC2 instance state polling every 10 seconds | Continuous |
-| `scripts/backup.py` | Create EBS snapshots for all attached volumes | Cron |
-| `scripts/restore.py` | Restore a volume from a specific snapshot and attach to instance | Manual |
-| `scripts/cleanup.py` | Delete old snapshots tagged as "Automated Backup" | Cron |
-| `scripts/zero_leak.py` | Find snapshots older than 30 days (dry-run by default) | Manual review |
-| `scripts/add_tags.py` | Tag all EC2 instances with `Environment: Dev` | One-time setup |
-
-### monitor.py — Self-Healing Core
-
-The primary recovery script. Performs an HTTP GET against the target URL and:
-
-- If **200 OK** — logs success, takes no action.
-- If **non-200** — sends an email alert via SMTP and reboots the EC2 instance.
-- If **unreachable** (timeout / connection error) — sends an alert and reboots the instance.
-
-```bash
-python scripts/monitor.py
-```
-
-### backup.py — EBS Snapshot Automation
-
-Creates snapshots of every EBS volume in the `us-east-1` region with description "Automated Backup". Intended to run daily via cron.
-
-```bash
-python scripts/backup.py
-```
-
-### restore.py — Volume Recovery
-
-Restores a volume from a specific snapshot ID and attaches it to a target instance as `/dev/sdf`. Update `snapshot_id` and `instance_id` inside the script before running.
-
-```bash
-python scripts/restore.py
-```
-
-### cleanup.py — Snapshot Lifecycle
-
-Deletes all snapshots with the "Automated Backup" description — designed to run after a successful restore to prevent accumulation.
-
-```bash
-python scripts/cleanup.py
-```
-
-### zero_leak.py — Stale Snapshot Audit
-
-Identifies snapshots older than 30 days (cross-account, dry-run). Uncomment the delete line to enable automatic removal.
-
-```bash
-python scripts/zero_leak.py
-```
-
-### health_check.py — Continuous State Monitoring
-
-Polls EC2 `DescribeInstances` every 10 seconds and prints instance state. Useful for monitoring recovery progress after a reboot.
-
-```bash
-python scripts/health_check.py
-```
-
-### add_tags.py — Resource Labeling
-
-Tags all EC2 instances in `us-east-1` with `Environment: Dev`. Run once during initial provisioning.
-
-```bash
-python scripts/add_tags.py
-```
-
----
-
-## Monitoring Stack
-
-### Prometheus & Alertmanager
-
-| Component | Configuration | Purpose |
-| ----------- | --------------- | --------- |
-| Prometheus | `prometheus.yml` | Scrapes `/metrics` from node-metrics-app |
-| Alertmanager | `k8s/alertmanager-config.yaml` | Routes alerts to notification channels |
-| Custom Rules | `k8s/custom-alerts.yaml` | Predefined alerts (HighCPUUsage, PodFailedToStart) |
-| Redis Alerts | `k8s/redis-alerts.yaml` | Redis-specific monitoring rules |
-| ServiceMonitor | `k8s/redis-servicemonitor.yaml` | Prometheus Operator scrape configuration |
-
-The custom alert rules detect:
-- **HighCPUUsage** — instance CPU above 50% for 5 minutes (warning)
-- **PodFailedToStart** — pods in Failed/Unknown/Pending state for 5 minutes (critical)
-
-### Node.js Metrics Application
-
-The `node-metrics-app/` directory contains an Express.js application that uses `prom-client` to expose custom metrics on a `/metrics` endpoint for Prometheus scraping.
+Run the checks from the repository root:
 
 ```bash
 cd node-metrics-app
-npm install
-npm start
+npm ci
+npm test
+node -c index.js
+cd ..
+
+helm lint mongo-stack
+helm template mongo-stack mongo-stack
+
+terraform fmt -check -recursive
+cd terraform
+terraform init -backend=false
+terraform validate
 ```
 
----
+The GitHub Actions workflow runs the same core checks on push and pull request to `main`.
 
-## Kubernetes Resources
+## Run The Metrics App
 
-The cluster includes Kubernetes manifests for stateful workloads:
+```bash
+cd node-metrics-app
+npm ci
+PORT=3000 npm start
+```
 
-| Manifest | Resource | Description |
-| ---------- | ---------- | ------------- |
-| `k8s/mongo-config.yaml` | ConfigMap | MongoDB configuration |
-| `k8s/mongo-secret.yaml` | Secret | MongoDB authentication credentials |
-| `k8s/mongo-service.yaml` | Service | MongoDB internal service exposure |
-| `k8s/mongo-express.yaml` | Deployment | Web-based MongoDB admin interface |
-| `k8s/mongo-express-service.yaml` | Service | mongo-express external access |
-| `k8s/redis-alerts.yaml` | PrometheusRule | Redis-specific alert definitions |
-| `k8s/redis-servicemonitor.yaml` | ServiceMonitor | Prometheus scrape target for Redis |
-| `k8s/pod-viewer-role.yaml` | ClusterRole | Read-only pod access |
-| `k8s/pod-viewer-binding.yaml` | RoleBinding | Bind viewer role to service account |
-| `k8s/private-deployment.yaml` | Deployment | Sample private deployment |
+Endpoints:
 
----
+- `GET /healthz`: returns a simple health response.
+- `GET /`: increments `my_custom_metric_total`.
+- `GET /metrics`: exposes Prometheus metrics.
 
-## Infrastructure Provisioning
+Build the container locally:
 
-### Terraform (`terraform/main.tf`)
+```bash
+cd node-metrics-app
+docker build -t node-metrics-app:local .
+```
 
-Defines the core AWS infrastructure: EC2 instances, networking, and security groups.
+## Kubernetes And Helm
+
+Standalone metrics app deployment:
+
+```bash
+kubectl apply -f node-metrics-app/node-app.yaml
+kubectl apply -f node-metrics-app/service-monitor.yaml
+```
+
+Helm render and install:
+
+```bash
+helm template mongo-stack mongo-stack
+helm install mongo-stack mongo-stack
+```
+
+The manifests use pinned example image tags, probes, resource requests and limits, and basic security contexts. For production, add persistent storage, network policies, external secret delivery, backup verification, and multi-replica service design.
+
+## AWS Utility Scripts
+
+Examples:
+
+```bash
+python3 scripts/monitor.py --url https://example.com
+python3 scripts/backup.py --region us-east-1
+python3 scripts/cleanup.py --older-than-days 30
+python3 scripts/restore.py --snapshot-id snap-123 --instance-id i-123 --availability-zone us-east-1a
+python3 scripts/add_tags.py --key Environment --value Dev
+```
+
+Add `--execute` to scripts that support mutation after reviewing the dry-run output.
+
+`scripts/monitor.py` reads optional notification and recovery settings from environment variables:
+
+- `MONITOR_URL`
+- `RECOVERY_INSTANCE_ID`
+- `AWS_REGION`
+- `SMTP_SENDER`
+- `SMTP_RECEIVER`
+- `SMTP_PASSWORD`
+
+## Terraform
+
+The Terraform example provisions one demo EC2 instance.
 
 ```bash
 cd terraform
-terraform init
-terraform apply
+terraform init -backend=false
+terraform validate
+terraform plan
 ```
 
-### Ansible (`ansible/playbook.yml`)
-
-Configures provisioned servers. Applies the `ssh` role for secure SSH configuration.
+Set a different AMI, region, or instance type with variables:
 
 ```bash
-ansible-playbook -i ansible/inventory.ini ansible/playbook.yml
+terraform plan \
+  -var='aws_region=us-east-1' \
+  -var='ami_id=ami-0c7217cdde317cfec' \
+  -var='instance_type=t3.micro'
 ```
 
----
+## Ansible
 
-## Prerequisites
+The SSH role disables root SSH login and restarts SSH when the config changes.
 
-- **AWS Account** with CLI configured (`aws configure`)
-- **Python 3.8+** with `boto3`, `requests`, `schedule` installed
-- **Terraform** for infrastructure provisioning
-- **Ansible** for configuration management
-- **Node.js 18+** and Docker for local microservice development
-- **kubectl** for Kubernetes manifest deployment
+```bash
+cd ansible
+ansible-playbook -i inventory.ini playbook.yml
+```
 
----
+The sample inventory has no active hosts by default.
 
-## Deployment
+## Known Limitations
 
-1. **Provision infrastructure**
-   ```bash
-   terraform init
-   terraform apply
-   ```
-
-2. **Configure servers**
-   ```bash
-   ansible-playbook -i inventory.ini playbook.yml
-   ```
-
-3. **Deploy monitoring stack** (Prometheus + Alertmanager)
-4. **Run self-healing script** as a scheduled task or systemd service
-   ```bash
-   # Add to crontab for continuous coverage:
-   # * * * * * cd /path/to/repo && python monitor.py
-   ```
-
-5. **Schedule backups**
-   ```bash
-   # Daily EBS snapshots:
-   # 0 2 * * * cd /path/to/repo && python backup.py
-   ```
-
----
-
-## Safety
-
-- `monitor.py` contains hardcoded credentials (SMTP password) — rotate before production use.
-- `restore.py` attaches volumes to a running instance — verify the device path is unused.
-- `cleanup.py` permanently deletes snapshots — run `zero_leak.py` first to audit what will be removed.
-- The `POST /admin/toggle-health` endpoint in `cloud-service-baseline` is for testing only — do not expose in production.
-
----
-
-## Related Repositories
-
-| Repository | Description |
-| ---------- | ----------- |
-| [**cloud-service-baseline**](https://github.com/h-vance/cloud-service-baseline) | Baseline health validation and configuration verification for cloud services |
-| [**ops-diagnostics**](https://github.com/h-vance/ops-diagnostics) | Diagnostic scripts for automated health verification, log analysis, and system profiling |
-| [**systems-debugging-framework**](https://github.com/h-vance/systems-debugging-framework) | Structured triage checklists for network, system, and application fault isolation |
-
----
-
-Maintained by Harrison Vance — Technical Support & Operations
+- No end-to-end live cluster test is included.
+- No production secret manager is wired in.
+- MongoDB has no persistence in the demo manifests.
+- Terraform is intentionally minimal and does not create a full VPC, EKS cluster, IAM boundary, or observability stack.
+- Docker image tags such as `w0nky/my-node-metrics:1.0.0` assume the image has been built and published under that tag.

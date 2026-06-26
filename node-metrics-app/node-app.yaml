@@ -12,11 +12,45 @@ spec:
       labels:
         app: node-metrics-app
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-      - name: node-metrics-app
-        image: w0nky/my-node-metrics:latest
-        ports:
-        - containerPort: 3000
+        - name: node-metrics-app
+          image: w0nky/my-node-metrics:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http-metrics
+          env:
+            - name: PORT
+              value: "3000"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http-metrics
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http-metrics
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
 ---
 apiVersion: v1
 kind: Service
@@ -28,6 +62,6 @@ spec:
   selector:
     app: node-metrics-app
   ports:
-  - port: 3000
-    targetPort: 3000
-    name: http-metrics
+    - port: 3000
+      targetPort: http-metrics
+      name: http-metrics

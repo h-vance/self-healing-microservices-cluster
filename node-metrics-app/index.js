@@ -1,32 +1,50 @@
 const express = require('express');
 const client = require('prom-client');
 
-const app = express();
-const port = 3000;
+function createApp() {
+    const app = express();
+    const register = new client.Registry();
 
-// Create a Registry to store metrics
-const register = new client.Registry();
-client.collectDefaultMetrics({ register });
+    client.collectDefaultMetrics({ register });
 
-// Create a custom counter metric
-const customCounter = new client.Counter({
-    name: 'my_custom_metric_total',
-    help: 'A custom counter for testing Prometheus'
-});
-register.registerMetric(customCounter);
+    const customCounter = new client.Counter({
+        name: 'my_custom_metric_total',
+        help: 'A custom counter for testing Prometheus',
+        registers: [register],
+    });
 
-// Increment the metric every time the home page is visited
-app.get('/', (req, res) => {
-    customCounter.inc();
-    res.send('Hello! The custom metric has been incremented.');
-});
+    app.get('/healthz', (req, res) => {
+        res.status(200).json({ status: 'ok' });
+    });
 
-// Expose the /metrics endpoint for Prometheus to scrape
-app.get('/metrics', async (req, res) => {
-    res.set('Content-Type', register.contentType);
-    res.end(await register.metrics());
-});
+    app.get('/', (req, res) => {
+        customCounter.inc();
+        res.send('Hello! The custom metric has been incremented.');
+    });
 
-app.listen(port, () => {
-    console.log(`App running at http://localhost:${port}`);
-});
+    app.get('/metrics', async (req, res, next) => {
+        try {
+            res.set('Content-Type', register.contentType);
+            res.end(await register.metrics());
+        } catch (error) {
+            next(error);
+        }
+    });
+
+    return { app, register };
+}
+
+function start() {
+    const port = Number(process.env.PORT || 3000);
+    const { app } = createApp();
+
+    return app.listen(port, () => {
+        console.log(`App running at http://localhost:${port}`);
+    });
+}
+
+if (require.main === module) {
+    start();
+}
+
+module.exports = { createApp, start };
