@@ -63,8 +63,7 @@ Run from the repository root unless a command changes directories.
 | Helm | Chart linting and rendering |
 | kubectl | Applying manifests to a cluster |
 | Terraform >= 1.5 | AWS example validation |
-| Python 3 | AWS and Ansible helper scripts |
-| AWS credentials | Only required for live AWS API calls |
+| Python 3 | Documentation validation snippets |
 | Ansible | SSH hardening playbook |
 
 ## Repository Map
@@ -72,31 +71,17 @@ Run from the repository root unless a command changes directories.
 | Path | Purpose |
 | --- | --- |
 | `node-metrics-app/` | Express metrics service, Dockerfile, Kubernetes service, and tests |
-| `k8s/` | Standalone Kubernetes examples for alerts, RBAC, MongoDB, and demo workloads |
-| `mongo-k8s/` | Alternate standalone MongoDB and mongo-express manifests |
+| `k8s/` | Standalone Kubernetes examples for alerts, RBAC, and demo workloads |
 | `mongo-stack/` | Helm chart for the MongoDB demo stack |
 | `terraform/` | Validation-friendly AWS EC2 example |
-| `scripts/` | AWS backup, cleanup, restore, tagging, health, and recovery utilities |
-| `ansible/` | SSH hardening role and fleet utility examples |
+| `ansible/` | SSH hardening playbook and fleet utility examples |
 | `assets/` | Existing project SVG assets |
 | `aws-bedrock-agent/` | Placeholder directory for future agent work |
 | `terraform-landing-zone/` | Placeholder directory for future landing-zone work |
 
-`node-metrics-app/service-monitor.yaml` is the canonical ServiceMonitor example. `service-monitor.yml` is a duplicate legacy filename kept for compatibility.
-
 ## Configuration
 
-Copy `.env.example` when running local scripts that read environment variables. Full details live in [docs/configuration.md](docs/configuration.md).
-
-AWS utility scripts are safe by default. Commands that can mutate cloud resources require `--execute`.
-
-```bash
-python3 scripts/monitor.py --url https://example.com
-python3 scripts/backup.py --region us-east-1
-python3 scripts/cleanup.py --older-than-days 30
-python3 scripts/restore.py --snapshot-id snap-123 --instance-id i-123 --availability-zone us-east-1a
-python3 scripts/add_tags.py --key Environment --value Dev
-```
+Copy `.env.example` when running the local metrics app. Full details live in [docs/configuration.md](docs/configuration.md).
 
 ## Documentation
 
