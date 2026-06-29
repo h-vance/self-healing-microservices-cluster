@@ -2,5 +2,15 @@
 - name: Configure Fleet
   hosts: my_servers
   become: yes
-  roles:
-    - ssh
+  tasks:
+    - name: Ensure SSH is installed
+      apt:
+        name: openssh-server
+        state: present
+      notify: Restart SSH
+
+  handlers:
+    - name: Restart SSH
+      service:
+        name: ssh
+        state: restarted

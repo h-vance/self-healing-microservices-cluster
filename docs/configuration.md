@@ -9,12 +9,6 @@ Use `.env.example` as a local template. Do not commit real secrets.
 | Variable | Used by | Default | Purpose |
 | --- | --- | --- | --- |
 | `PORT` | `node-metrics-app/index.js` | `3000` | HTTP port for the metrics app |
-| `AWS_REGION` | AWS scripts | `us-east-1` | AWS region for API calls |
-| `MONITOR_URL` | `scripts/monitor.py` | none | URL checked by the recovery script |
-| `RECOVERY_INSTANCE_ID` | `scripts/monitor.py` | none | EC2 instance to reboot in live recovery mode |
-| `SMTP_SENDER` | `scripts/monitor.py` | none | Email sender for notifications |
-| `SMTP_RECEIVER` | `scripts/monitor.py` | none | Email receiver for notifications |
-| `SMTP_PASSWORD` | `scripts/monitor.py` | none | SMTP password read from local environment only |
 
 ## Terraform Variables
 
@@ -60,8 +54,4 @@ helm template mongo-stack mongo-stack \
 
 ## Kubernetes Placeholders
 
-Standalone Secret manifests under `k8s/` and `mongo-k8s/` contain placeholder values. Replace them through your cluster's secret delivery process before using the manifests outside a demo environment.
-
-## ServiceMonitor Files
-
-Use `node-metrics-app/service-monitor.yaml` in docs and examples. `node-metrics-app/service-monitor.yml` contains the same manifest and is kept only as a duplicate legacy filename.
+Standalone Secret manifests under `k8s/` contain placeholder values. Replace them through your cluster's secret delivery process before using the manifests outside a demo environment.
