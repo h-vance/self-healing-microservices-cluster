@@ -76,8 +76,6 @@ Run from the repository root unless a command changes directories.
 | `terraform/` | Validation-friendly AWS EC2 example |
 | `ansible/` | SSH hardening playbook and fleet utility examples |
 | `assets/` | Existing project SVG assets |
-| `aws-bedrock-agent/` | Placeholder directory for future agent work |
-| `terraform-landing-zone/` | Placeholder directory for future landing-zone work |
 
 ## Configuration
 
