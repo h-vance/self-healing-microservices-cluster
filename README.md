@@ -10,18 +10,51 @@
 [![AWS](https://www.shieldcn.dev/badge/AWS-232F3E.svg?variant=default&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI%2BPHBhdGggZD0iTTExLjk2IDExLjIzYy0xLjMyLS40MS0xLjc0LS44My0xLjc0LTEuNCAwLS42Ny42NS0xLjIyIDEuNjktMS4yMiAxLjA0IDAgMS44My42IDIuMDggMS40OGgxLjhjLS4yOC0xLjU1LTEuNjgtMi44OC0zLjgzLTIuODgtMi4yMiAwLTMuNiAxLjM0LTMuNiAyLjkyIDAgMS45MyAxLjU4IDIuNSAzLjMzIDMuMDMgMS40OC40NSAxLjc3Ljk1IDEuNzcgMS41OCAwIC44Ni0uODggMS40LTEuOTIgMS40LTEuMjkgMC0yLjI2LS43OC0yLjQzLTEuOEg3LjNjLjE4IDEuOTUgMS44NSAzLjE2IDQuMTQgMy4xNiAyLjQ1IDAgMy44Ni0xLjMgMy44Ni0zLjAzIDAtMS44OS0xLjM1LTIuNi0zLjM0LTMuMjR6bS04LjgxIDEuOWgyLjM4bC42OC0xLjkyaDIuOTVsLjY2IDEuOTJoMi40TDkuMDQgNi4wM0g2Ljg3bC0zLjcyIDcuMXptMy42Mi0zLjQ4bDEtMi45IDEuMDMgMi45SDYuNzd6TTI0IDYuMDNoLTIuMzFsLTEuOSA1LjU2LTEuNjgtNC45aC0uMThsLTEuNjYgNC45LTEuODktNS41NmgtMi4zbDMuMDUgNy4xaDIuMDhsMS40NS00LjQzIDEuNDcgNC40M2gyLjFMMjQgNi4wM3oiLz48L3N2Zz4K&logoColor=FFFFFF&size=xs)](https://aws.amazon.com/)
 [![Docker](https://www.shieldcn.dev/badge/Docker-2496ED.svg?variant=default&logo=Docker&logoColor=FFFFFF&size=xs)](https://www.docker.com/)
 
-Demo infrastructure for a monitored Kubernetes workload with Prometheus metrics, Helm rendering, Terraform validation, Ansible hardening, and dry-run AWS recovery utilities.
+A monitored Kubernetes workload that recovers from injected faults on its own,
+with the recovery asserted in CI against a real cluster rather than described
+in a README.
 
-This repo is built for portfolio review: it shows production-aware patterns without pretending to be a complete production platform.
+This repo is built for portfolio review: it shows production-aware patterns
+without pretending to be a complete production platform. What is and is not in
+scope is stated plainly in [docs/portfolio-scope.md](docs/portfolio-scope.md).
 
 ## What This Demonstrates
 
-- A testable Node.js metrics service with `/healthz`, `/`, and `/metrics`.
-- Kubernetes manifests with probes, resource controls, and basic security contexts.
+- **Self-healing that is tested, not asserted.** Every push creates a `kind`
+  cluster, injects three real faults, and fails the build if the workload does
+  not recover. See [docs/evidence/](docs/evidence/) for captured runs.
+- **A remediation controller** that receives Alertmanager webhooks and performs
+  scoped `kubectl` actions, capturing deployment state before and after so the
+  remediation is provable. Least-privilege RBAC: read pods, patch deployments.
+- Resilience primitives applied to a running workload: HorizontalPodAutoscaler,
+  PodDisruptionBudget, NetworkPolicy, probes, resource limits, security
+  contexts.
+- A testable Node.js metrics service with `/healthz`, `/`, and `/metrics`, plus
+  fault-injection routes gated behind `CHAOS_ENABLED`.
 - A Helm chart for rendering the MongoDB and mongo-express demo stack.
-- Terraform that validates a small AWS EC2 example without requiring backend state.
-- Python AWS utilities that default to dry-run behavior before cloud mutation.
+- Terraform that validates a small AWS EC2 example without requiring backend
+  state.
 - CI that checks Node tests, Helm, Terraform, and formatting.
+
+## Chaos Scenarios
+
+| Scenario | Fault | Recovery mechanism | Observed |
+|---|---|---|---|
+| [liveness](docs/evidence/liveness.md) | `/healthz` forced to 503 | kubelet restarts the container | restart after 84s |
+| [oom](docs/evidence/oom.md) | allocation past the 128Mi limit | kubelet OOM-kills and restarts | `OOMKilled`, under 3s |
+| [pod-delete](docs/evidence/pod-delete.md) | `kubectl delete pod` | Deployment controller replaces it | Ready after 33s |
+| [remediation-loop](docs/evidence/remediation-loop.md) | same liveness fault | Prometheus alert routed to the controller | remediated in 40.9s |
+
+Run one locally against any cluster:
+
+```bash
+bash scripts/chaos.sh liveness
+```
+
+The assertions are scoped to a single named pod and each scenario waits for a
+settled cluster first, so a restart from an unrelated cause cannot make a
+scenario pass. Removing the `livenessProbe` makes the liveness scenario fail,
+which is the control that makes a passing run mean something.
 
 ## Architecture
 
@@ -71,7 +104,10 @@ Run from the repository root unless a command changes directories.
 | Path | Purpose |
 | --- | --- |
 | `node-metrics-app/` | Express metrics service, Dockerfile, Kubernetes service, and tests |
-| `k8s/` | Standalone Kubernetes examples for alerts, RBAC, and demo workloads |
+| `remediation/` | Alertmanager webhook controller that performs scoped recovery actions |
+| `scripts/chaos.sh` | Fault injection and recovery assertions against a live cluster |
+| `k8s/` | Alerts, RBAC, resilience primitives, and the controller's manifests |
+| `docs/evidence/` | Captured output from real chaos runs |
 | `mongo-stack/` | Helm chart for the MongoDB demo stack |
 | `terraform/` | Validation-friendly AWS EC2 example |
 | `ansible/` | SSH hardening playbook and fleet utility examples |

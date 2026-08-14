@@ -1,0 +1,41 @@
+# Alerts that drive automated remediation.
+#
+# These are separate from custom-alerts.yaml on purpose: the rules here are
+# wired to an actuator, so their "for" windows are short enough to fire inside
+# a CI run, and each alertname must match a key in the controller's
+# REMEDIATION allowlist or the webhook is a no-op by design.
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: remediation-alerts
+  labels:
+    release: prometheus
+spec:
+  groups:
+    - name: self-healing
+      # Evaluate quickly so injected faults surface within the CI budget.
+      interval: 10s
+      rules:
+        # app_health_status is exported by the node app and flips to 0 when
+        # fault injection forces /healthz to 503.
+        - alert: NodeAppUnhealthy
+          expr: min(app_health_status) < 1
+          for: 30s
+          labels:
+            severity: critical
+            remediation: restart_deployment
+          annotations:
+            summary: "node-metrics-app reported unhealthy for 30s"
+            description: "Liveness endpoint is returning 503. Restarting the deployment."
+
+        - alert: NodeAppCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{container="node-metrics-app"}[5m]) > 2
+          for: 1m
+          labels:
+            severity: critical
+            remediation: restart_deployment
+          annotations:
+            summary: "node-metrics-app restarted more than twice in five minutes"
+            description: "Container is crash looping. Restarting the deployment to reset backoff."

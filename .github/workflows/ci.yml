@@ -32,6 +32,12 @@ jobs:
           npm ci
           npm test
 
+      - name: Test remediation controller
+        # Decision logic only; kubectl is stubbed so this needs no cluster.
+        # The live path is covered by chaos.yml.
+        working-directory: remediation
+        run: python3 -m unittest discover -p 'test_*.py' -v
+
       - name: Setup Helm
         uses: azure/setup-helm@v4
 

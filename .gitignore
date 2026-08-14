@@ -7,3 +7,7 @@ venv/
 *.tfstate.backup
 .terraform/
 .ruff_cache/
+
+# Python bytecode from the remediation controller tests
+__pycache__/
+*.pyc

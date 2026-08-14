@@ -1,19 +1,41 @@
+# Alertmanager routing.
+#
+# Alerts labelled remediation=restart_deployment go to the in-cluster
+# remediation controller. Everything else falls through to a receiver with no
+# configs, which discards it.
+#
+# There is deliberately no email receiver. The previous version declared an
+# SMTP receiver pointing at example.com whose authPassword referenced a
+# Secret named smtp-secret that was never created. prometheus-operator cannot
+# resolve that reference, so it refused to adopt the whole AlertmanagerConfig
+# and the remediation route silently never existed. A fake receiver is not
+# worth breaking a real one.
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: AlertmanagerConfig
 metadata:
-  name: email-config
+  name: remediation-config
   labels:
     release: prometheus
 spec:
   route:
-    receiver: email-receiver
+    receiver: "null"
+    groupBy: ["alertname"]
+    # Tight timings so a CI run observes the full alert-to-action loop.
+    groupWait: 10s
+    groupInterval: 30s
+    repeatInterval: 5m
+    routes:
+      - receiver: remediation-webhook
+        matchers:
+          - name: remediation
+            value: restart_deployment
+        groupWait: 5s
   receivers:
-    - name: email-receiver
-      emailConfigs:
-        - to: ops@example.com
-          from: alerts@example.com
-          smarthost: smtp.example.com:587
-          authUsername: alerts@example.com
-          authPassword:
-            name: smtp-secret
-            key: password
+    - name: remediation-webhook
+      webhookConfigs:
+        - url: http://remediation-controller.default.svc.cluster.local:8080/alert
+          sendResolved: false
+
+    # No configs, so anything routed here is dropped. Wiring a real paging or
+    # chat destination is listed as out of scope in docs/portfolio-scope.md.
+    - name: "null"

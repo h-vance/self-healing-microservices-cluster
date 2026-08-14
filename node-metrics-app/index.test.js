@@ -4,8 +4,8 @@ const test = require('node:test');
 
 const { createApp } = require('./index');
 
-async function withServer(fn) {
-    const { app } = createApp();
+async function withServer(fn, options = {}) {
+    const { app } = createApp(options);
     const server = app.listen(0);
     await once(server, 'listening');
 
@@ -46,4 +46,38 @@ test('metrics endpoint exposes Prometheus content type', async () => {
         assert.equal(response.status, 200);
         assert.match(response.headers.get('content-type'), /text\/plain/);
     });
+});
+
+test('admin routes are absent unless chaos is enabled', async () => {
+    await withServer(async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/admin/toggle-health`, { method: 'POST' });
+
+        assert.equal(response.status, 404);
+    }, { chaosEnabled: false });
+});
+
+test('toggling health makes the liveness endpoint fail', async () => {
+    await withServer(async (baseUrl) => {
+        const toggled = await fetch(`${baseUrl}/admin/toggle-health`, { method: 'POST' });
+        assert.equal(toggled.status, 200);
+        assert.deepEqual(await toggled.json(), { healthy: false });
+
+        const unhealthy = await fetch(`${baseUrl}/healthz`);
+        assert.equal(unhealthy.status, 503);
+        assert.deepEqual(await unhealthy.json(), { status: 'unhealthy', reason: 'fault_injected' });
+
+        const restored = await fetch(`${baseUrl}/admin/toggle-health`, { method: 'POST' });
+        assert.deepEqual(await restored.json(), { healthy: true });
+        assert.equal((await fetch(`${baseUrl}/healthz`)).status, 200);
+    }, { chaosEnabled: true });
+});
+
+test('health gauge tracks injected state', async () => {
+    await withServer(async (baseUrl) => {
+        assert.match(await (await fetch(`${baseUrl}/metrics`)).text(), /app_health_status 1/);
+
+        await fetch(`${baseUrl}/admin/toggle-health`, { method: 'POST' });
+
+        assert.match(await (await fetch(`${baseUrl}/metrics`)).text(), /app_health_status 0/);
+    }, { chaosEnabled: true });
 });

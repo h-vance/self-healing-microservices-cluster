@@ -10,9 +10,27 @@ This repository is a compact cloud/SRE portfolio project. It is meant to show ju
 - Kubernetes probes, resource requests, limits, and basic security contexts.
 - Helm linting and template rendering.
 - Terraform provider pinning, variables, outputs, formatting, and validation.
-- AWS scripts that default to dry-run behavior.
 - CI that exercises the core validation path.
 - Clear docs for configuration, runbooks, architecture, and limitations.
+
+### Verified against a live cluster
+
+The following are not just declared in YAML. A `kind` cluster is created on
+every push, faults are injected, and recovery is asserted. See
+[evidence/](evidence/).
+
+- Fault injection for liveness failure, container OOM, and pod deletion, with
+  assertions that fail the build if recovery does not occur.
+- HorizontalPodAutoscaler, PodDisruptionBudget, and NetworkPolicy applied to a
+  running workload.
+- A live `kube-prometheus-stack` install, so the ServiceMonitor and
+  PrometheusRule manifests are actually consumed by an operator rather than
+  sitting inert.
+- Alertmanager routing a firing alert to an in-cluster remediation controller,
+  which performs a scoped `kubectl rollout restart` and records the deployment
+  state before and after acting.
+- Least-privilege RBAC for that controller: read pods, patch deployments,
+  nothing else.
 
 ## Intentionally Out Of Scope
 
@@ -20,10 +38,23 @@ This repository is a compact cloud/SRE portfolio project. It is meant to show ju
 - Remote Terraform state and locking.
 - Production secret management with AWS Secrets Manager, SOPS, Sealed Secrets, or External Secrets.
 - Persistent MongoDB volumes and backup restore validation.
-- NetworkPolicy, PodDisruptionBudget, HPA, and multi-zone availability.
-- Live Kubernetes end-to-end tests.
-- Real alert routing to incident tooling.
-- Automated remediation triggered directly from Alertmanager.
+- Multi-zone availability. The CI cluster is a single-node `kind` cluster, so
+  zone-spreading and node-failure recovery are not exercised.
+- NetworkPolicy **enforcement**. The policy is applied and schema-valid, but
+  kind's default CNI (kindnet) does not enforce NetworkPolicy, so it is not
+  proven to block traffic. That needs a policy-capable CNI such as Calico.
+- Paging, ticketing, or chat integration. Alertmanager routes to the in-cluster
+  remediation controller, not to PagerDuty, Jira, or Slack.
+
+## Chaos Engineering Scope
+
+Fault injection covers three failure modes: liveness failure, container OOM,
+and pod deletion. Not covered: node failure, network partition, disk pressure,
+dependency (MongoDB or Redis) outage, or cascading multi-service failure.
+
+The remediation controller acts on two alertnames against one deployment. The
+action allowlist is deliberately closed, so an unmapped alert is recorded and
+ignored rather than triggering a guess.
 
 ## Why This Scope Works
 

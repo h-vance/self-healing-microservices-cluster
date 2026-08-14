@@ -3,7 +3,9 @@ kind: Deployment
 metadata:
   name: node-metrics-app
 spec:
-  replicas: 1
+  # Three replicas so a PodDisruptionBudget has something to protect and a
+  # single injected fault does not take the service to zero.
+  replicas: 3
   selector:
     matchLabels:
       app: node-metrics-app
@@ -27,6 +29,10 @@ spec:
           env:
             - name: PORT
               value: "3000"
+            # Fault-injection routes stay compiled out unless explicitly
+            # enabled. The chaos CI job patches this to "true".
+            - name: CHAOS_ENABLED
+              value: "false"
           readinessProbe:
             httpGet:
               path: /healthz

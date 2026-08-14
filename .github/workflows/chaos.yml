@@ -1,0 +1,207 @@
+name: Chaos
+
+# Stands up a real kind cluster, injects real faults, and asserts the workload
+# recovers on its own. This is what makes "self-healing" a tested property
+# rather than a claim: scripts/chaos.sh exits non-zero if recovery does not
+# happen, so a regression fails the build.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  chaos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: self-healing
+          wait: 120s
+
+      - name: Build app and controller images
+        run: |
+          docker build -t self-healing/node-metrics-app:ci node-metrics-app
+          docker build -t self-healing/remediation-controller:ci remediation
+
+      - name: Load images into kind
+        run: |
+          kind load docker-image self-healing/node-metrics-app:ci --name self-healing
+          kind load docker-image self-healing/remediation-controller:ci --name self-healing
+
+      - name: Install kube-prometheus-stack
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+          # Trimmed to what the alert path needs; Grafana and node-exporter are
+          # dead weight in a short-lived CI cluster.
+          helm install prometheus prometheus-community/kube-prometheus-stack \
+            --namespace monitoring --create-namespace \
+            --set grafana.enabled=false \
+            --set nodeExporter.enabled=false \
+            --set prometheus.prometheusSpec.scrapeInterval=10s \
+            --set prometheus.prometheusSpec.evaluationInterval=10s \
+            --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+            --set prometheus.prometheusSpec.ruleSelectorNilUsesHelmValues=false \
+            --set alertmanager.alertmanagerSpec.alertmanagerConfigSelector.matchLabels.release=prometheus \
+            --set alertmanager.alertmanagerSpec.alertmanagerConfigMatcherStrategy.type=None \
+            --set-json 'alertmanager.alertmanagerSpec.alertmanagerConfigNamespaceSelector={}' \
+            --wait --timeout 10m
+
+      - name: Install metrics-server
+        run: |
+          # The HPA reports cpu <unknown> and cannot scale without this. kind's
+          # kubelet serves a self-signed cert, hence --kubelet-insecure-tls.
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+          kubectl patch -n kube-system deployment metrics-server --type=json \
+            -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+          kubectl -n kube-system rollout status deployment/metrics-server --timeout=180s
+
+      - name: Deploy workload with fault injection enabled
+        run: |
+          # CHAOS_ENABLED defaults to false in the committed manifest; the
+          # chaos job is the only place it is turned on.
+          sed -e 's|image: w0nky/my-node-metrics:1.0.0|image: self-healing/node-metrics-app:ci|' \
+              -e 's|value: "false"|value: "true"|' \
+              node-metrics-app/node-app.yaml | kubectl apply -f -
+
+          kubectl apply -f k8s/node-app-resilience.yaml
+          kubectl apply -f k8s/remediation-controller.yaml
+          kubectl apply -f node-metrics-app/service-monitor.yaml
+          kubectl apply -f k8s/remediation-alerts.yaml
+          kubectl apply -f k8s/alertmanager-config.yaml
+
+          kubectl rollout status deployment/node-metrics-app --timeout=180s
+          kubectl rollout status deployment/remediation-controller --timeout=180s
+
+      - name: Confirm Alertmanager adopted the remediation route
+        run: |
+          # An AlertmanagerConfig in another namespace is only discovered when
+          # alertmanagerConfigNamespaceSelector is set. Check the live routing
+          # tree rather than assuming the object was picked up.
+          for i in $(seq 1 24); do
+            if kubectl -n monitoring exec statefulset/alertmanager-prometheus-kube-prometheus-alertmanager -c alertmanager -- \
+                 amtool --alertmanager.url=http://localhost:9093 config routes show 2>/dev/null \
+                 | grep -q remediation; then
+              echo "Remediation route is live:"
+              kubectl -n monitoring exec statefulset/alertmanager-prometheus-kube-prometheus-alertmanager -c alertmanager -- \
+                amtool --alertmanager.url=http://localhost:9093 config routes show
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Alertmanager never adopted the remediation route" >&2
+          kubectl get alertmanagerconfig -A -o yaml >&2
+          exit 1
+
+      - name: Confirm Prometheus is scraping the app
+        run: |
+          # Query through a throwaway curl pod rather than exec'ing into the
+          # Prometheus container, which ships without wget or curl.
+          query() {
+            kubectl run "promq-$RANDOM" --rm -i --restart=Never --quiet \
+              --image=curlimages/curl:8.10.1 -- \
+              curl -sS -m 10 --get \
+              --data-urlencode 'query=app_health_status' \
+              'http://prometheus-kube-prometheus-prometheus.monitoring.svc.cluster.local:9090/api/v1/query' \
+              2>/dev/null
+          }
+
+          for i in $(seq 1 30); do
+            if query | grep -q '"value"'; then
+              echo "app_health_status is being scraped"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "Prometheus never scraped app_health_status" >&2
+          kubectl get servicemonitor -A >&2
+          kubectl get endpoints node-metrics-service >&2 || true
+          query >&2 || true
+          exit 1
+
+      - name: Confirm the HPA has live metrics
+        run: |
+          # Without this the HPA object exists but reports <unknown> and can
+          # never scale, which would make the resilience claim hollow.
+          for i in $(seq 1 30); do
+            targets=$(kubectl get hpa node-metrics-app -o jsonpath='{.status.currentMetrics[0].resource.current.averageUtilization}' 2>/dev/null || true)
+            if [ -n "$targets" ]; then
+              echo "HPA is reading CPU: ${targets}%"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "HPA never reported metrics" >&2
+          kubectl describe hpa node-metrics-app >&2
+          exit 1
+
+      - name: Scenario - liveness failure
+        run: bash scripts/chaos.sh liveness
+
+      - name: Assert the Alertmanager remediation loop fired
+        run: |
+          # The liveness scenario holds the app unhealthy long enough for
+          # NodeAppUnhealthy (for: 30s) to fire and reach the controller.
+          # Asserting this explicitly is what stops the loop from silently
+          # never running, which is exactly what happened on the first
+          # green build of this workflow.
+          pod=$(kubectl get pod -l app=remediation-controller -o jsonpath='{.items[0].metadata.name}')
+
+          for i in $(seq 1 30); do
+            if kubectl exec "$pod" -- sh -c 'ls /evidence/*.json >/dev/null 2>&1'; then
+              echo "Controller recorded a remediation:"
+              kubectl exec "$pod" -- sh -c 'cat /evidence/*.json'
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "Controller never received an alert from Alertmanager" >&2
+          kubectl logs "$pod" --tail=50 >&2
+          kubectl get alertmanagerconfig -A >&2
+          kubectl -n monitoring exec statefulset/alertmanager-prometheus-kube-prometheus-alertmanager -c alertmanager -- \
+            amtool --alertmanager.url=http://localhost:9093 config routes show >&2 || true
+          exit 1
+
+      - name: Scenario - out of memory
+        run: bash scripts/chaos.sh oom
+
+      - name: Scenario - pod deletion
+        run: bash scripts/chaos.sh pod-delete
+
+      - name: Collect remediation controller evidence
+        if: always()
+        run: |
+          mkdir -p evidence
+          kubectl logs deployment/remediation-controller > evidence/controller.log 2>&1 || true
+          # Evidence records written by the controller when Alertmanager fired.
+          pod=$(kubectl get pod -l app=remediation-controller -o jsonpath='{.items[0].metadata.name}')
+          # The controller writes one file per remediation. Concatenating them
+          # produces a stream of objects rather than a valid document, so wrap
+          # them into a single JSON array that tooling can actually parse.
+          kubectl exec "$pod" -- sh -c \
+            'set -- /evidence/*.json; [ -e "$1" ] || exit 0; printf "["; sep=""; for f in "$@"; do printf "%s" "$sep"; cat "$f"; sep=","; done; printf "]"' \
+            > evidence/remediation-records.json 2>/dev/null || true
+          python3 -c "import json,sys; d=json.load(open('evidence/remediation-records.json')); print(f'{len(d)} remediation record(s) collected')" \
+            2>/dev/null || echo "no parseable remediation records"
+          kubectl get pods -o wide > evidence/final-pods.txt 2>&1 || true
+          kubectl get hpa,pdb,networkpolicy > evidence/final-resilience.txt 2>&1 || true
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chaos-evidence
+          path: evidence/
+          if-no-files-found: warn

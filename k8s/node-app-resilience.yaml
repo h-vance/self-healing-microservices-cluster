@@ -1,0 +1,80 @@
+# Resilience controls for the node-metrics-app Deployment.
+#
+# These are the primitives that make recovery automatic rather than manual:
+# the HPA restores capacity under load, the PDB stops voluntary disruption
+# from draining the service to zero, and the NetworkPolicy limits who can
+# reach the pod in the first place.
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: node-metrics-app
+  labels:
+    app: node-metrics-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: node-metrics-app
+  minReplicas: 3
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          # Deliberately low against the 50m request so load-driven scaling is
+          # observable in a short-lived CI run rather than theoretical.
+          averageUtilization: 60
+  behavior:
+    scaleDown:
+      # Without this, the HPA scales back down mid-test and the evidence is
+      # ambiguous about whether a scale-up ever happened.
+      stabilizationWindowSeconds: 120
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: node-metrics-app
+  labels:
+    app: node-metrics-app
+spec:
+  # With replicas: 3, this tolerates one voluntary disruption at a time.
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: node-metrics-app
+---
+# NOTE: kind's default CNI (kindnet) admits NetworkPolicy objects but does not
+# enforce them. In CI this is validated as a well-formed policy, not proven to
+# block traffic. Enforcement requires a policy-capable CNI such as Calico.
+# See docs/portfolio-scope.md.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: node-metrics-app
+  labels:
+    app: node-metrics-app
+spec:
+  podSelector:
+    matchLabels:
+      app: node-metrics-app
+  policyTypes:
+    - Ingress
+  ingress:
+    # Prometheus scrapes /metrics from the monitoring namespace.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 3000
+    # In-namespace callers, which covers the remediation controller and any
+    # in-cluster probe traffic.
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 3000

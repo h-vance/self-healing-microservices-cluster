@@ -1,0 +1,125 @@
+# Remediation controller: receives Alertmanager webhooks and performs scoped
+# recovery actions. RBAC is deliberately narrow, it can read pods and restart
+# deployments and nothing else, so a compromised controller cannot delete
+# workloads or read secrets.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: remediation-controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: remediation-controller
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+  # "rollout restart" is a patch of the pod template annotation.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: remediation-controller
+subjects:
+  - kind: ServiceAccount
+    name: remediation-controller
+roleRef:
+  kind: Role
+  name: remediation-controller
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: remediation-controller
+  labels:
+    app: remediation-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: remediation-controller
+  template:
+    metadata:
+      labels:
+        app: remediation-controller
+    spec:
+      serviceAccountName: remediation-controller
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: controller
+          image: self-healing/remediation-controller:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: REMEDIATION_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: EVIDENCE_DIR
+              value: /evidence
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 25m
+              memory: 48Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: evidence
+              mountPath: /evidence
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # emptyDir is correct here: evidence is collected by the CI job before
+        # the cluster is torn down, and must not survive as cluster state.
+        - name: evidence
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: remediation-controller
+  labels:
+    app: remediation-controller
+spec:
+  selector:
+    app: remediation-controller
+  ports:
+    - port: 8080
+      targetPort: http
+      name: http
